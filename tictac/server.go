@@ -147,7 +147,7 @@ func (s *Server) start() error {
 			for _, ch := range s.players {
 				ch <- msg
 			}
-			log.Print("someone won")
+			log.Print(fmt.Sprintf("player %d won", victory))
 			break
 		}
 		if board.CheckDraw() {
@@ -160,6 +160,7 @@ func (s *Server) start() error {
 			for _, ch := range s.players {
 				ch <- msg
 			}
+			log.Print("it's a draw")
 			break
 		}
 		turn = (turn + 1) % REQUIRED_PLAYERS
