@@ -112,7 +112,7 @@ func (s *Server) start() error {
 		valid := board.ValidTile(reply.Row, reply.Col)
 		// Resend request if client sends invalid tile position
 		for !valid {
-			msg.Message = "Invalid tile, try again"
+			msg.Message = fmt.Sprintf("Invalid tile, try again %c", mark[turn])
 			s.players[turn] <- msg
 			reply = <-s.inMessages
 			if !reply.Ok {
