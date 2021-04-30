@@ -112,16 +112,25 @@ func (s *Server) start() error {
 		valid := board.ValidTile(reply.Row, reply.Col)
 		// Resend request if client sends invalid tile position
 		for !valid {
-			msg.Message = fmt.Sprintf("Invalid tile, try again %c", mark[turn])
+			msg.Message = fmt.Sprintf("Invalid tile, try again %c", marks[turn])
 			s.players[turn] <- msg
 			reply = <-s.inMessages
 			if !reply.Ok {
 				for _, ch := range s.players {
 					ch <- ServerMessage{Board: s.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
 				}
+				for i := 0; i < REQUIRED_PLAYERS; i++ {
+					<-s.sema
+				}
 				return fmt.Errorf("a player disconnected")
 			}
 			if reply.PlayerID != turn {
+				for _, ch := range s.players {
+					ch <- ServerMessage{Board: s.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
+				}
+				for i := 0; i < REQUIRED_PLAYERS; i++ {
+					<-s.sema
+				}
 				return fmt.Errorf("turns are out of sync")
 			}
 			valid = board.ValidTile(reply.Row, reply.Col)
