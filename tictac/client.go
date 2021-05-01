@@ -17,9 +17,9 @@ const (
 )
 
 type Client struct {
-	board    Board
-	conn     net.Conn
-	clientID int
+	board    Board    // The client's local copy of the board
+	conn     net.Conn // The client's connection to the server
+	clientID int      // The client's ID assigned by the server
 }
 
 // NewClient creates and returns a new client struct
