@@ -12,8 +12,8 @@ type ServerMessage struct {
 
 // ClientResponse contains the information the client sends to the server
 type ClientResponse struct {
-	Row      int
-	Col      int
+	Row      int  // Row the client selects
+	Col      int  // Col the client selects
 	PlayerID int  // The sender of the message
 	Ok       bool // If false, the player has disconnected
 }

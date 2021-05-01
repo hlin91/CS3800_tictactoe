@@ -32,6 +32,7 @@ func NewClient() Client {
 
 // Connect attempts to connect the client to the server
 func (c *Client) Connect() error {
+	// Establish a tcp connection with the server
 	conn, err := net.Dial("tcp", SERVER_IP+":"+SERVER_PORT)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %v", err)
@@ -47,6 +48,7 @@ func (c *Client) Connect() error {
 		return fmt.Errorf("failed to connect: %v", msg.Message)
 	}
 	// Successful connection
+	// Initialize struct data
 	c.clientID = msg.PlayerID
 	c.conn = conn
 	c.board.Clear()
@@ -63,10 +65,12 @@ func (c *Client) Start() error {
 	server := bufio.NewScanner(c.conn)
 	// Continue to listen for messages from the server
 	for server.Scan() {
+		// Unmarshal the json message from the server
 		err := json.Unmarshal(server.Bytes(), &msg)
 		if err != nil {
 			return fmt.Errorf("failed to parse server message: %v", err)
 		}
+		// Load the board and print the text message
 		c.board = msg.Board
 		c.board.Clear()
 		fmt.Println(msg.Message)
@@ -77,7 +81,7 @@ func (c *Client) Start() error {
 		mark := msg.Message[len(msg.Message)-1] // The mark the client uses to represent the player will be the last character in the message
 		var row, col int
 		valid := false
-		// Get row and column from user input
+		// Get a valid row and column from user input
 		for !valid {
 			fmt.Print("Enter a row and column (eg. 0 1): ")
 			input.Scan()
@@ -102,11 +106,13 @@ func (c *Client) Start() error {
 			}
 			valid = true
 		}
+		// Construct a reply to send to the server containing the client selected row and column
 		reply, err := json.Marshal(ClientResponse{Row: row, Col: col, PlayerID: c.clientID, Ok: true})
 		if err != nil {
 			return fmt.Errorf("failed to marshal client response: %v", err)
 		}
-		fmt.Fprintln(c.conn, string(reply))
+		fmt.Fprintln(c.conn, string(reply)) // Send the reply to the server
+		// Update the board locally and wait for a server reply
 		c.board[row][col] = mark
 		c.board.Clear()
 		c.board.Display()

@@ -18,6 +18,7 @@ const (
 
 type Board [BOARD_SIZE][BOARD_SIZE]byte
 
+// NewBoard creates and returns a new board
 func NewBoard() Board {
 	var b Board
 	for i := 0; i < BOARD_SIZE; i++ {

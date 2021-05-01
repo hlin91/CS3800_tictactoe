@@ -19,9 +19,9 @@ const (
 type Server struct {
 	board       Board
 	playerCount int
-	players     []chan ServerMessage
-	inMessages  chan ClientResponse
-	sema        chan interface{} // Semaphore for ensuring that goroutines return before killing main process
+	players     []chan ServerMessage // Channels for sending messages to each connected player
+	inMessages  chan ClientResponse  // Channel the server listens to for client responses
+	sema        chan interface{}     // Semaphore for ensuring that goroutines return before killing main process
 }
 
 // NewServer creates and returns a new server
@@ -65,7 +65,9 @@ func (s *Server) addPlayer(conn net.Conn) error {
 	if s.playerCount == REQUIRED_PLAYERS {
 		return fmt.Errorf("game is full")
 	}
+	// Create a channel for the player
 	s.players = append(s.players, make(chan ServerMessage))
+	// Start the handler goroutine to handle the connection
 	go func(id int) {
 		log.Println(id)
 		ch := s.players[id]
