@@ -20,7 +20,6 @@ type Client struct {
 	board    Board
 	conn     net.Conn
 	clientID int
-	mark     byte
 }
 
 // NewClient creates and returns a new client struct

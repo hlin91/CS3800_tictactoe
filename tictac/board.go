@@ -33,7 +33,7 @@ func NewBoard() Board {
 func (b Board) Display() {
 	for _, row := range b {
 		for _, tile := range row {
-			fmt.Printf("%c", tile)
+			fmt.Printf(" %c", tile)
 		}
 		fmt.Println()
 	}
