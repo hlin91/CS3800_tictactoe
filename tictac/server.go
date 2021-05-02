@@ -196,7 +196,12 @@ func handlePlayerConn(playerID int, conn net.Conn, inChan <-chan ServerMessage, 
 		var reply ClientResponse
 		err = json.Unmarshal(client.Bytes(), &reply)
 		if err != nil {
-			log.Fatal(fmt.Sprintf("handlePlayerConn: error unmarshaling response: %v", err))
+			// Failure to unmarshal likely means the player connection closed prematurely
+			log.Println(fmt.Sprintf("handlePlayerConn: error unmarshaling response: %v", err))
+			// Treat this as the player leaving
+			conn.Close()
+			outChan <- leaveMessage(playerID) // Tell the server the player left
+			return
 		}
 		outChan <- reply
 	}
