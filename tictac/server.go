@@ -69,7 +69,6 @@ func (s *Server) addPlayer(conn net.Conn) error {
 	s.players = append(s.players, make(chan ServerMessage))
 	// Start the handler goroutine to handle the connection
 	go func(id int) {
-		log.Println(id)
 		ch := s.players[id]
 		handlePlayerConn(id, conn, ch, s.inMessages)
 		var done interface{}
