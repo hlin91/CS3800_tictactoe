@@ -179,6 +179,7 @@ func handlePlayerConn(playerID int, conn net.Conn, inChan <-chan ServerMessage, 
 	// Then, listen for the client response and forward to the server
 	// in JSON format
 	// Write welcome message to the player
+	defer conn.Close()
 	welcome, err := json.Marshal(welcomeMessage(playerID))
 	if err != nil {
 		log.Fatal(err)
@@ -191,21 +192,25 @@ func handlePlayerConn(playerID int, conn net.Conn, inChan <-chan ServerMessage, 
 		if err != nil {
 			log.Fatal(fmt.Sprintf("handlePlayerConn: error marshaling message: %v", err))
 		}
-		fmt.Fprintln(conn, string(m)) // Write server message to client
-		client.Scan()                 // Get the client response
+		_, err = fmt.Fprintln(conn, string(m)) // Write server message to client
+		if err != nil {
+			// Handle failure to write to connection as player leaving
+			log.Println(fmt.Sprintf("handlePlayerConn: error writing to connection: %v", err))
+			outChan <- leaveMessage(playerID) // Tell the server the player left
+			return
+		}
+		client.Scan() // Get the client response
 		var reply ClientResponse
 		err = json.Unmarshal(client.Bytes(), &reply)
 		if err != nil {
 			// Failure to unmarshal likely means the player connection closed prematurely
 			log.Println(fmt.Sprintf("handlePlayerConn: error unmarshaling response: %v", err))
 			// Treat this as the player leaving
-			conn.Close()
 			outChan <- leaveMessage(playerID) // Tell the server the player left
 			return
 		}
 		outChan <- reply
 	}
-	conn.Close()
 	outChan <- leaveMessage(playerID) // Tell the server the player left
 }
 
