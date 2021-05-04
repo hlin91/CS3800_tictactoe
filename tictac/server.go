@@ -17,10 +17,11 @@ const (
 )
 
 type Server struct {
-	playerCount int
+	// NOTE: These attributes all get passed to the game instance. The server does not interact with these directly outside of playerCount
+	playerCount int                  // Number of players currently joined
 	players     []chan ServerMessage // Channels for sending messages to each connected player
-	inMessages  chan ClientResponse
-	sema        chan interface{}
+	inMessages  chan ClientResponse  // Channel to store messages received from the clients
+	sema        chan interface{}     // Semaphore used to wait until all goroutines finish
 }
 
 // NewServer creates and returns a new server
@@ -69,7 +70,7 @@ func (s *Server) Run() error {
 	return nil
 }
 
-// resets the players and channels of the server
+// reset resets the players and channels of the server
 func (s *Server) reset() {
 	s.playerCount = 0
 	s.players = []chan ServerMessage{}
@@ -77,7 +78,7 @@ func (s *Server) reset() {
 	s.sema = make(chan interface{}, REQUIRED_PLAYERS)
 }
 
-// adds a player to the server
+// addPlayer adds a player to the server
 func (s *Server) addPlayer(conn net.Conn) error {
 	if s.playerCount == REQUIRED_PLAYERS {
 		return fmt.Errorf("game is full")
@@ -97,14 +98,14 @@ func (s *Server) addPlayer(conn net.Conn) error {
 
 // gameInstance represents a single game of tic tac toe between two players
 type gameInstance struct {
-	board       Board
-	playerCount int
-	players     []chan ServerMessage
-	inMessages  chan ClientResponse
-	sema        chan interface{}
+	board       Board                // The tic-tac-toe board
+	playerCount int                  // Number of players in the game
+	players     []chan ServerMessage // Channels for each player to store server messages
+	inMessages  chan ClientResponse  // Channel to store responses from the clients
+	sema        chan interface{}     // Semaphore used to wait until all goroutines finish
 }
 
-// create a new game instance with the passed players
+// newGameInstance create a new game instance with the passed players
 func newGameInstance(p []chan ServerMessage, count int, messages chan ClientResponse, semaphore chan interface{}) gameInstance {
 	return gameInstance{
 		board:       NewBoard(),
@@ -115,7 +116,7 @@ func newGameInstance(p []chan ServerMessage, count int, messages chan ClientResp
 	}
 }
 
-// starts the game of tic tac toe
+// start starts the game of tic tac toe
 func (g *gameInstance) start() error {
 	if g.playerCount != REQUIRED_PLAYERS {
 		return fmt.Errorf("not enough players")
@@ -195,7 +196,7 @@ func (g *gameInstance) start() error {
 	return nil
 }
 
-// send message to all player channels
+// broadcast sends a  message to all player channels
 func (g gameInstance) broadcast(msg ServerMessage) {
 	for _, ch := range g.players {
 		ch <- msg
@@ -243,7 +244,7 @@ func handlePlayerConn(playerID int, conn net.Conn, inChan <-chan ServerMessage, 
 	outChan <- leaveMessage(playerID) // Tell the server the player left
 }
 
-// wait for goroutines to return via the semaphore
+// wait waits for goroutines to return via the semaphore
 func (g *gameInstance) wait() {
 	for i := 0; i < REQUIRED_PLAYERS; i++ {
 		<-g.sema

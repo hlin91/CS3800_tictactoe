@@ -74,6 +74,7 @@ func (c *Client) Start() error {
 		c.board.Clear()
 		fmt.Println(msg.Message)
 		c.board.Display()
+		// Return if message is not ok
 		if !msg.Ok {
 			return fmt.Errorf(msg.Message)
 		}
