@@ -2,7 +2,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/hlin91/CS3800_tictactoe/tictac"
 )
@@ -11,9 +11,8 @@ func main() {
 	server := tictac.NewServer()
 	err := server.Run()
 	if err != nil {
-		fmt.Printf("server: %v", err)
+		log.Println(err)
 	}
-	server.Close()
 }
 
 //!--

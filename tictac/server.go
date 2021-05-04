@@ -17,47 +17,63 @@ const (
 )
 
 type Server struct {
-	board       Board
 	playerCount int
 	players     []chan ServerMessage // Channels for sending messages to each connected player
-	inMessages  chan ClientResponse  // Channel the server listens to for client responses
-	sema        chan interface{}     // Semaphore for ensuring that goroutines return before killing main process
+	inMessages  chan ClientResponse
+	sema        chan interface{}
 }
 
 // NewServer creates and returns a new server
 func NewServer() Server {
 	s := Server{}
-	s.board = NewBoard()
+	s.players = []chan ServerMessage{}
 	s.inMessages = make(chan ClientResponse)
 	s.sema = make(chan interface{}, REQUIRED_PLAYERS)
-	s.players = []chan ServerMessage{}
 	return s
 }
 
 // Run listens for player connections and runs the server once enough players have joined
 func (s *Server) Run() error {
-	log.Print("server running")
 	listener, err := net.Listen("tcp", SERVER_IP+":"+SERVER_PORT)
 	if err != nil {
 		return fmt.Errorf("failed to run server: %v", err)
 	}
-	// Listen for players until we have enough
-	log.Print("listening for player connections...")
-	for s.playerCount < REQUIRED_PLAYERS {
-		conn, err := listener.Accept()
-		if err != nil {
-			log.Print(err)
+	for true {
+		// Listen for players until we have enough
+		log.Print("listening for player connections...")
+		for s.playerCount < REQUIRED_PLAYERS {
+			conn, err := listener.Accept()
+			if err != nil {
+				log.Print(err)
+			}
+			err = s.addPlayer(conn)
+			if err != nil {
+				log.Print(err)
+			} else {
+				log.Print("player successfully connected")
+			}
 		}
-		err = s.addPlayer(conn)
-		if err != nil {
-			log.Print(err)
-		} else {
-			log.Print("player successfully connected")
-		}
+		// Start a game instance once enough players have joined
+		log.Print("starting game instance")
+		go func(s Server) {
+			game := newGameInstance(s.players, s.playerCount, s.inMessages, s.sema)
+			err := game.start()
+			if err != nil {
+				log.Printf("error: %v\n", err)
+			}
+		}(*s)
+		// Continue listening for players
+		s.reset()
 	}
-	log.Print("starting game")
-	err = s.start()
-	return err
+	return nil
+}
+
+// resets the players and channels of the server
+func (s *Server) reset() {
+	s.playerCount = 0
+	s.players = []chan ServerMessage{}
+	s.inMessages = make(chan ClientResponse)
+	s.sema = make(chan interface{}, REQUIRED_PLAYERS)
 }
 
 // addPlayer adds a player to the server
@@ -78,9 +94,28 @@ func (s *Server) addPlayer(conn net.Conn) error {
 	return nil
 }
 
-// start starts the game of tic tac toe
-func (s *Server) start() error {
-	if s.playerCount != REQUIRED_PLAYERS {
+type gameInstance struct {
+	board       Board
+	playerCount int
+	players     []chan ServerMessage
+	inMessages  chan ClientResponse
+	sema        chan interface{}
+}
+
+// create a new game instance with the passed players
+func newGameInstance(p []chan ServerMessage, count int, messages chan ClientResponse, semaphore chan interface{}) gameInstance {
+	return gameInstance{
+		board:       NewBoard(),
+		playerCount: count,
+		players:     p,
+		inMessages:  messages,
+		sema:        semaphore,
+	}
+}
+
+// starts the game of tic tac toe
+func (g *gameInstance) start() error {
+	if g.playerCount != REQUIRED_PLAYERS {
 		return fmt.Errorf("not enough players")
 	}
 	turn := 0
@@ -94,19 +129,19 @@ func (s *Server) start() error {
 			Ok:       true,
 			Message:  fmt.Sprintf("Make your move %c", marks[turn]),
 		}
-		s.players[turn] <- msg
+		g.players[turn] <- msg
 		// Wait for and get the reply
-		reply := <-s.inMessages
+		reply := <-g.inMessages
 		if !reply.Ok {
 			// Tell clients that a player disconnected
-			for _, ch := range s.players {
-				ch <- ServerMessage{Board: s.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
+			for _, ch := range g.players {
+				ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
 			}
 			return fmt.Errorf("a player disconnected")
 		}
 		if reply.PlayerID != turn {
-			for _, ch := range s.players {
-				ch <- ServerMessage{Board: s.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player turns desynced")}
+			for _, ch := range g.players {
+				ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player turns desynced")}
 			}
 			break
 		}
@@ -114,23 +149,23 @@ func (s *Server) start() error {
 		// Resend request if client sends invalid tile position
 		for !valid {
 			msg.Message = fmt.Sprintf("Invalid tile, try again %c", marks[turn])
-			s.players[turn] <- msg
-			reply = <-s.inMessages
+			g.players[turn] <- msg
+			reply = <-g.inMessages
 			if !reply.Ok {
-				for _, ch := range s.players {
-					ch <- ServerMessage{Board: s.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
+				for _, ch := range g.players {
+					ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
 				}
 				for i := 0; i < REQUIRED_PLAYERS; i++ {
-					<-s.sema
+					<-g.sema
 				}
 				return fmt.Errorf("a player disconnected")
 			}
 			if reply.PlayerID != turn {
-				for _, ch := range s.players {
-					ch <- ServerMessage{Board: s.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
+				for _, ch := range g.players {
+					ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
 				}
 				for i := 0; i < REQUIRED_PLAYERS; i++ {
-					<-s.sema
+					<-g.sema
 				}
 				return fmt.Errorf("turns are out of sync")
 			}
@@ -145,7 +180,7 @@ func (s *Server) start() error {
 				Ok:      false,
 				Message: fmt.Sprintf("Player %d won!", victory),
 			}
-			for _, ch := range s.players {
+			for _, ch := range g.players {
 				ch <- msg
 			}
 			log.Print(fmt.Sprintf("player %d won", victory))
@@ -158,7 +193,7 @@ func (s *Server) start() error {
 				Ok:      false,
 				Message: "It's a draw!",
 			}
-			for _, ch := range s.players {
+			for _, ch := range g.players {
 				ch <- msg
 			}
 			log.Print("it's a draw")
@@ -168,7 +203,7 @@ func (s *Server) start() error {
 	}
 	// Wait for all goroutines to finish
 	for i := 0; i < REQUIRED_PLAYERS; i++ {
-		<-s.sema
+		<-g.sema
 	}
 	return nil
 }
@@ -214,12 +249,12 @@ func handlePlayerConn(playerID int, conn net.Conn, inChan <-chan ServerMessage, 
 	outChan <- leaveMessage(playerID) // Tell the server the player left
 }
 
-// Close closes all channels on the server
-func (s *Server) Close() {
-	for _, ch := range s.players {
+// Close closes all channels on the game instance
+func (g *gameInstance) Close() {
+	for _, ch := range g.players {
 		close(ch)
 	}
-	close(s.inMessages)
+	close(g.inMessages)
 }
 
 //!--
