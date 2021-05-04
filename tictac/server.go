@@ -94,6 +94,7 @@ func (s *Server) addPlayer(conn net.Conn) error {
 	return nil
 }
 
+// gameInstance represents a single game of tic tac toe between two players
 type gameInstance struct {
 	board       Board
 	playerCount int
