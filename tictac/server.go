@@ -32,7 +32,7 @@ func NewServer() Server {
 	return s
 }
 
-// Run listens for player connections and runs the server once enough players have joined
+// Run listens for player connections and starts a game instance once enough players have joined
 func (s *Server) Run() error {
 	listener, err := net.Listen("tcp", SERVER_IP+":"+SERVER_PORT)
 	if err != nil {
@@ -77,7 +77,7 @@ func (s *Server) reset() {
 	s.sema = make(chan interface{}, REQUIRED_PLAYERS)
 }
 
-// addPlayer adds a player to the server
+// adds a player to the server
 func (s *Server) addPlayer(conn net.Conn) error {
 	if s.playerCount == REQUIRED_PLAYERS {
 		return fmt.Errorf("game is full")
