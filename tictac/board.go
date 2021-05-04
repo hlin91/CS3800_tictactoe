@@ -87,7 +87,7 @@ func (b Board) CheckVictory() int {
 	}
 	sum = 0
 	for i := BOARD_SIZE - 1; i >= 0; i-- {
-		sum += int(b[i][i])
+		sum += int(b[i][BOARD_SIZE-i-1])
 	}
 	if sum%PLAYER_1_MARK == 0 {
 		return 1
