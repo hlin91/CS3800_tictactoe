@@ -139,13 +139,13 @@ func (g *gameInstance) start() error {
 			for _, ch := range g.players {
 				ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
 			}
-			return fmt.Errorf("a player disconnected")
+			return fmt.Errorf("turns are out of sync")
 		}
 		if reply.PlayerID != turn {
 			for _, ch := range g.players {
 				ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player turns desynced")}
 			}
-			break
+			return fmt.Errorf("player turns desynced")
 		}
 		valid := board.ValidTile(reply.Row, reply.Col)
 		// Resend request if client sends invalid tile position
