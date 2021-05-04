@@ -55,14 +55,14 @@ func (s *Server) Run() error {
 		}
 		// Start a game instance once enough players have joined
 		log.Print("starting game instance")
-		go func(s Server) {
-			game := newGameInstance(s.players, s.playerCount, s.inMessages, s.sema)
+		go func(players []chan ServerMessage, playerCount int, inMessages chan ClientResponse, sema chan interface{}) {
+			game := newGameInstance(players, playerCount, inMessages, sema)
 			err := game.start()
 			if err != nil {
 				log.Printf("gameInstance: %v\n", err)
 			}
 			game.Close()
-		}(*s)
+		}(s.players, s.playerCount, s.inMessages, s.sema)
 		// Continue listening for players
 		s.reset()
 	}
@@ -85,12 +85,12 @@ func (s *Server) addPlayer(conn net.Conn) error {
 	// Create a channel for the player
 	s.players = append(s.players, make(chan ServerMessage, 1))
 	// Start the handler goroutine to handle the connection
-	go func(id int) {
-		ch := s.players[id]
-		handlePlayerConn(id, conn, ch, s.inMessages)
+	go func(id int, sema chan interface{}, inMessages chan ClientResponse, players []chan ServerMessage) {
+		ch := players[id]
+		handlePlayerConn(id, conn, ch, inMessages)
 		var done interface{}
-		s.sema <- done // Signal a return for the main goroutine
-	}(s.playerCount)
+		sema <- done // Signal a return for the main goroutine
+	}(s.playerCount, s.sema, s.inMessages, s.players)
 	s.playerCount++
 	return nil
 }
@@ -136,23 +136,15 @@ func (g *gameInstance) start() error {
 		reply := <-g.inMessages
 		if !reply.Ok {
 			// Tell clients that a player disconnected
-			for _, ch := range g.players {
-				ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
-			}
+			g.broadcast(ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")})
 			// Wait for all goroutines to finish
-			for i := 0; i < REQUIRED_PLAYERS; i++ {
-				<-g.sema
-			}
-			return fmt.Errorf("turns are out of sync")
+			g.wait()
+			return nil
 		}
 		if reply.PlayerID != turn {
-			for _, ch := range g.players {
-				ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player turns desynced")}
-			}
+			g.broadcast(ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player turns desynced")})
 			// Wait for all goroutines to finish
-			for i := 0; i < REQUIRED_PLAYERS; i++ {
-				<-g.sema
-			}
+			g.wait()
 			return fmt.Errorf("player turns desynced")
 		}
 		valid := board.ValidTile(reply.Row, reply.Col)
@@ -162,22 +154,14 @@ func (g *gameInstance) start() error {
 			g.players[turn] <- msg
 			reply = <-g.inMessages
 			if !reply.Ok {
-				for _, ch := range g.players {
-					ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
-				}
-				for i := 0; i < REQUIRED_PLAYERS; i++ {
-					<-g.sema
-				}
+				g.broadcast(ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")})
+				g.wait()
 				return fmt.Errorf("a player disconnected")
 			}
 			if reply.PlayerID != turn {
-				for _, ch := range g.players {
-					ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
-				}
-				for i := 0; i < REQUIRED_PLAYERS; i++ {
-					<-g.sema
-				}
-				return fmt.Errorf("turns are out of sync")
+				g.broadcast(ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")})
+				g.wait()
+				return fmt.Errorf("player turns desynced")
 			}
 			valid = board.ValidTile(reply.Row, reply.Col)
 		}
@@ -190,9 +174,7 @@ func (g *gameInstance) start() error {
 				Ok:      false,
 				Message: fmt.Sprintf("Player %d won!", victory),
 			}
-			for _, ch := range g.players {
-				ch <- msg
-			}
+			g.broadcast(msg)
 			log.Print(fmt.Sprintf("player %d won", victory))
 			break
 		}
@@ -203,19 +185,21 @@ func (g *gameInstance) start() error {
 				Ok:      false,
 				Message: "It's a draw!",
 			}
-			for _, ch := range g.players {
-				ch <- msg
-			}
+			g.broadcast(msg)
 			log.Print("it's a draw")
 			break
 		}
 		turn = (turn + 1) % REQUIRED_PLAYERS
 	}
-	// Wait for all goroutines to finish
-	for i := 0; i < REQUIRED_PLAYERS; i++ {
-		<-g.sema
-	}
+	g.wait()
 	return nil
+}
+
+// send message to all player channels
+func (g gameInstance) broadcast(msg ServerMessage) {
+	for _, ch := range g.players {
+		ch <- msg
+	}
 }
 
 // Handle a player connection to the server
@@ -249,7 +233,7 @@ func handlePlayerConn(playerID int, conn net.Conn, inChan <-chan ServerMessage, 
 		err = json.Unmarshal(client.Bytes(), &reply)
 		if err != nil {
 			// Failure to unmarshal likely means the player connection closed prematurely
-			log.Println(fmt.Sprintf("handlePlayerConn: error unmarshaling response: %v", err))
+			log.Println("handlePlayerConn: player connection lost")
 			// Treat this as the player leaving
 			outChan <- leaveMessage(playerID) // Tell the server the player left
 			return
@@ -257,6 +241,13 @@ func handlePlayerConn(playerID int, conn net.Conn, inChan <-chan ServerMessage, 
 		outChan <- reply
 	}
 	outChan <- leaveMessage(playerID) // Tell the server the player left
+}
+
+// wait for goroutines to return via the semaphore
+func (g *gameInstance) wait() {
+	for i := 0; i < REQUIRED_PLAYERS; i++ {
+		<-g.sema
+	}
 }
 
 // Close closes all channels on the game instance
