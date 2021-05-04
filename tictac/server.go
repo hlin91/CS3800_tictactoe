@@ -27,7 +27,7 @@ type Server struct {
 func NewServer() Server {
 	s := Server{}
 	s.players = []chan ServerMessage{}
-	s.inMessages = make(chan ClientResponse)
+	s.inMessages = make(chan ClientResponse, 1)
 	s.sema = make(chan interface{}, REQUIRED_PLAYERS)
 	return s
 }
@@ -83,7 +83,7 @@ func (s *Server) addPlayer(conn net.Conn) error {
 		return fmt.Errorf("game is full")
 	}
 	// Create a channel for the player
-	s.players = append(s.players, make(chan ServerMessage))
+	s.players = append(s.players, make(chan ServerMessage, 1))
 	// Start the handler goroutine to handle the connection
 	go func(id int) {
 		ch := s.players[id]
@@ -139,11 +139,19 @@ func (g *gameInstance) start() error {
 			for _, ch := range g.players {
 				ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player disconnected")}
 			}
+			// Wait for all goroutines to finish
+			for i := 0; i < REQUIRED_PLAYERS; i++ {
+				<-g.sema
+			}
 			return fmt.Errorf("turns are out of sync")
 		}
 		if reply.PlayerID != turn {
 			for _, ch := range g.players {
 				ch <- ServerMessage{Board: g.board, PlayerID: 0, Ok: false, Message: fmt.Sprintf("player turns desynced")}
+			}
+			// Wait for all goroutines to finish
+			for i := 0; i < REQUIRED_PLAYERS; i++ {
+				<-g.sema
 			}
 			return fmt.Errorf("player turns desynced")
 		}
