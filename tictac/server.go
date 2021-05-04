@@ -59,8 +59,9 @@ func (s *Server) Run() error {
 			game := newGameInstance(s.players, s.playerCount, s.inMessages, s.sema)
 			err := game.start()
 			if err != nil {
-				log.Printf("error: %v\n", err)
+				log.Printf("gameInstance: %v\n", err)
 			}
+			game.Close()
 		}(*s)
 		// Continue listening for players
 		s.reset()
